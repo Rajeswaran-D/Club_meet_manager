@@ -35,11 +35,12 @@ const getMeetings = async (req, res) => {
       where: { isDeleted: false },
       orderBy: { date: 'desc' },
       include: {
-        _count: { select: { members: true } }
+        _count: { select: { participants: true } }
       }
     });
     res.json(meetings);
   } catch (error) {
+    console.error('GET /meetings error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -51,7 +52,7 @@ const getMeetingById = async (req, res) => {
     const meeting = await prisma.meeting.findFirst({
       where: { id, isDeleted: false },
       include: {
-        members: {
+        participants: {
           include: { member: true }
         },
         documents: true

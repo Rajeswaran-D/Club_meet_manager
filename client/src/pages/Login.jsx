@@ -11,11 +11,19 @@ const Login = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
+    if (!email || !password) {
+      toast.error('Please enter both email and password.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await api.post('/auth/login', { email, password });
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      
+      const responseData = response.data?.success ? response.data.data : response.data;
+      localStorage.setItem('token', responseData.token);
+      localStorage.setItem('user', JSON.stringify(responseData.user));
       toast.success('Login successful');
       navigate('/');
     } catch (error) {
@@ -38,7 +46,7 @@ const Login = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
-          <form className="space-y-6" onSubmit={handleLogin}>
+          <form className="space-y-6" onSubmit={handleLogin} noValidate>
             <div>
               <label className="block text-sm font-medium text-slate-700">Email address</label>
               <div className="mt-1">

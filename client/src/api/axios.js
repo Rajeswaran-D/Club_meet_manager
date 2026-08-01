@@ -7,6 +7,7 @@ const api = axios.create({
   },
 });
 
+
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -28,7 +29,10 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
+    // Only trigger the automatic logout redirect if the 401 didn't come from the login endpoint itself
+    const isLoginRequest = error.config && error.config.url && error.config.url.includes('/auth/login');
+    
+    if (error.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
