@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  role         Role
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  isDeleted    Boolean    @default(false)
+  auditLogs    AuditLog[]
+
+  @@index([email])
+}
+
+model Meeting {
+  id           String               @id @default(uuid())
+  title        String
+  description  String?
+  date         DateTime
+  time         String
+  venue        String
+  agenda       String?
+  status       MeetingStatus        @default(DRAFT)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  isDeleted    Boolean              @default(false)
+  documents    Document[]
+  participants MeetingParticipant[]
+
+  @@index([status, date])
+}
+
+model Member {
+  id         String               @id @default(uuid())
+  name       String
+  rollNo     String               @unique
+  department String
+  email      String               @unique
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  isDeleted  Boolean              @default(false)
+  meetings   MeetingParticipant[]
+
+  @@index([email])
+  @@index([rollNo])
+}
+
+model MeetingParticipant {
+  id               String           @id @default(uuid())
+  meetingId        String
+  memberId         String
+  rsvpStatus       RSVPStatus       @default(PENDING)
+  attendanceStatus AttendanceStatus @default(PENDING)
+  emailSent        Boolean          @default(false)
+  reminderSent     Boolean          @default(false)
+  checkInTime      DateTime?
+  threadId         String?
+  messageId        String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  meeting          Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  member           Member           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, memberId])
+  @@index([memberId])
+  @@index([threadId])
+}
+
+model Document {
+  id        String       @id @default(uuid())
+  meetingId String
+  type      DocumentType
+  publicId  String?
+  secureUrl String?
+  filePath  String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  isDeleted Boolean      @default(false)
+  meeting   Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+}
+
+enum Role {
+  PRESIDENT
+  VICE_PRESIDENT
+  SECRETARY
+  JOINT_SECRETARY
+}
+
+enum MeetingStatus {
+  DRAFT
+  INVITATIONS_SENT
+  RSVP_OPEN
+  ATTENDANCE_OPEN
+  ATTENDANCE_LOCKED
+  COMPLETED
+  REPORT_GENERATED
+  ARCHIVED
+}
+
+enum RSVPStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  MAYBE
+}
+
+enum AttendanceStatus {
+  PENDING
+  PRESENT
+  ABSENT
+}
+
+enum DocumentType {
+  MINUTES
+  IPC
+  PHOTO
+  REPORT
+}

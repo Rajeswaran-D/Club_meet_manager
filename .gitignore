@@ -1,0 +1,38 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*
+
+# Build & Dist
+dist/
+build/
+out/
+.next/
+
+# Logs & Coverage
+logs/
+*.log
+coverage/
+.nyc_output/
+
+# Application Specific
+server/uploads/
+client/dist/
+
+# Prisma
+server/prisma/*.db
+server/prisma/*.db-journal
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
