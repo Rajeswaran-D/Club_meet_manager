@@ -56,7 +56,7 @@ const MeetingsList = () => {
     { header: 'Status', accessor: 'status', render: (row) => (
         <span className="px-2 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">{row.status}</span>
     )},
-    { header: 'Members', accessor: '_count', render: (row) => row._count?.members || 0 },
+    { header: 'Members', accessor: '_count', render: (row) => row._count?.participants || 0 },
     { header: 'Actions', accessor: 'id', render: (row) => (
       <div className="flex space-x-2">
         <Link to={`/meetings/${row.id}`} className="p-1 text-blue-600 hover:bg-blue-50 rounded">

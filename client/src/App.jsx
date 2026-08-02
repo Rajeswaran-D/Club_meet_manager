@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import MeetingsList from './pages/Meetings/MeetingsList';
 import MeetingDetails from './pages/Meetings/MeetingDetails';
 import RSVP from './pages/RSVP';
+import Settings from './pages/Settings';
 
 const queryClient = new QueryClient();
 
@@ -37,7 +38,7 @@ function App() {
               <Route index element={<MeetingsList />} />
               <Route path=":id" element={<MeetingDetails />} />
             </Route>
-            <Route path="settings" element={<div>Settings coming soon</div>} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </Router>

@@ -242,6 +242,38 @@ const getStats = async (req, res) => {
       avgAttendance = Math.round((presentCount / participants.length) * 100);
     }
 
+    const recentMeetingsData = await prisma.meeting.findMany({
+      where: { isDeleted: false },
+      orderBy: { date: 'desc' },
+      take: 5,
+      include: {
+        participants: {
+          select: { rsvpStatus: true, attendanceStatus: true }
+        }
+      }
+    });
+
+    const recentMeetingStats = recentMeetingsData.map(m => {
+      const pendingRSVPs = m.participants.filter(p => p.rsvpStatus === 'PENDING').length;
+      const acceptedRSVPs = m.participants.filter(p => p.rsvpStatus === 'CONFIRMED').length;
+      const declinedRSVPs = m.participants.filter(p => p.rsvpStatus === 'DECLINED').length;
+      
+      const present = m.participants.filter(p => p.attendanceStatus === 'PRESENT').length;
+      const absent = m.participants.filter(p => p.attendanceStatus === 'ABSENT').length;
+
+      return {
+        id: m.id,
+        title: m.title,
+        date: m.date,
+        pendingRSVPs,
+        acceptedRSVPs,
+        declinedRSVPs,
+        present,
+        absent,
+        total: m.participants.length
+      };
+    });
+
     res.json({
       totalMembers,
       avgAttendance,
@@ -250,7 +282,8 @@ const getStats = async (req, res) => {
       todaysMeetings,
       pendingRSVPs,
       acceptedInvitations,
-      recentReports: reportsCount
+      recentReports: reportsCount,
+      recentMeetingStats
     });
   } catch (error) {
     console.error('Error fetching global stats:', error);

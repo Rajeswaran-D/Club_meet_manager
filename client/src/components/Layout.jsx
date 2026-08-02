@@ -5,7 +5,15 @@ import ErrorBoundary from './ui/ErrorBoundary';
 
 const Layout = () => {
   const location = useLocation();
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [user, setUser] = React.useState(JSON.parse(localStorage.getItem('user') || '{}'));
+
+  React.useEffect(() => {
+    const handleUserUpdate = () => {
+      setUser(JSON.parse(localStorage.getItem('user') || '{}'));
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
+  }, []);
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: <Home size={20} /> },
