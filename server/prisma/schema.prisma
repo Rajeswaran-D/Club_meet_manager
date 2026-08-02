@@ -109,6 +109,7 @@ enum Role {
   VICE_PRESIDENT
   SECRETARY
   JOINT_SECRETARY
+  COORDINATOR
 }
 
 enum MeetingStatus {

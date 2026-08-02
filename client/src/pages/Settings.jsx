@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { User, Bell, Shield, Users, Check, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
+import api from '../api/axios';
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('profile');
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newUser, setNewUser] = useState({ name: '', email: '', role: '', password: '' });
   
   // Read current user info from local storage and set defaults
   const [user, setUser] = useState(() => {
@@ -21,6 +24,22 @@ const Settings = () => {
     localStorage.setItem('user', JSON.stringify(user));
     window.dispatchEvent(new Event('user-updated'));
     toast.success('Settings saved successfully!');
+  };
+
+  const handleAddUser = async () => {
+    try {
+      if (!newUser.name || !newUser.email || !newUser.role || !newUser.password) {
+        return toast.error('All fields are required');
+      }
+      setIsAddingUser(true);
+      await api.post('/auth/register', newUser);
+      toast.success('User added successfully!');
+      setNewUser({ name: '', email: '', role: '', password: '' });
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to add user');
+    } finally {
+      setIsAddingUser(false);
+    }
   };
 
   const tabs = [
@@ -125,19 +144,30 @@ const Settings = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                      <input type="text" placeholder="John Doe" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="text" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} placeholder="John Doe" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
-                      <input type="email" placeholder="john@example.com" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="john@example.com" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Assign Role</label>
+                      <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">Select a role</option>
+                        <option value="PRESIDENT">President</option>
+                        <option value="VICE_PRESIDENT">Vice President</option>
+                        <option value="SECRETARY">Secretary</option>
+                        <option value="JOINT_SECRETARY">Joint Secretary</option>
+                        <option value="COORDINATOR">Coordinator</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
+                      <input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} placeholder="Password@123" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
                     </div>
                   </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Assign Role</label>
-                    <input type="text" placeholder="e.g. Graphic Designer" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                  <button type="button" onClick={() => toast.success('User added successfully!')} className="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm">
-                    Add User
+                  <button type="button" onClick={handleAddUser} disabled={isAddingUser} className="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm disabled:opacity-50">
+                    {isAddingUser ? 'Adding...' : 'Add User'}
                   </button>
                 </div>
               </div>
