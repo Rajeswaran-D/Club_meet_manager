@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import MeetingsList from './pages/Meetings/MeetingsList';
 import MeetingDetails from './pages/Meetings/MeetingDetails';
+import RSVP from './pages/RSVP';
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/rsvp/:token" element={<RSVP />} />
           
           <Route path="/" element={
             <ProtectedRoute>
@@ -35,8 +37,6 @@ function App() {
               <Route index element={<MeetingsList />} />
               <Route path=":id" element={<MeetingDetails />} />
             </Route>
-            <Route path="attendance" element={<div>Attendance coming soon</div>} />
-            <Route path="reports" element={<div>Reports coming soon</div>} />
             <Route path="settings" element={<div>Settings coming soon</div>} />
           </Route>
         </Routes>

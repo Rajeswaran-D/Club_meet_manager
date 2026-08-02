@@ -33,15 +33,14 @@ const getRSVPStats = async (req, res) => {
   }
 };
 
-// Retrieve confirmed participants for attendance
-const getConfirmedParticipants = async (req, res) => {
+// Retrieve all participants for a meeting
+const getAllParticipants = async (req, res) => {
   try {
     const { meetingId } = req.params;
 
     const participants = await prisma.MeetingParticipant.findMany({
       where: { 
-        meetingId,
-        rsvpStatus: 'CONFIRMED'
+        meetingId
       },
       include: {
         member: true
@@ -51,7 +50,7 @@ const getConfirmedParticipants = async (req, res) => {
 
     res.json(participants);
   } catch (error) {
-    console.error('Error fetching confirmed participants:', error);
+    console.error('Error fetching participants:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -124,7 +123,7 @@ const getODList = async (req, res) => {
 
 module.exports = {
   getRSVPStats,
-  getConfirmedParticipants,
+  getAllParticipants,
   markAttendance,
   getODList
 };

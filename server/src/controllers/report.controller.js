@@ -121,9 +121,41 @@ const generateReport = async (req, res) => {
       </html>
     `;
 
-    const pdfFilename = `Report-${meetingId}.pdf`;
+    const pdfFilename = `Report-${meetingId}-${Date.now()}.pdf`;
     const pdfPath = path.join(UPLOADS_DIR, pdfFilename);
     await generatePDF(finalHtml, pdfPath);
+
+    // Delete existing report from DB if any
+    await prisma.document.deleteMany({ where: { meetingId, type: 'REPORT' } });
+
+    // Upload to Supabase Storage
+    const fileBuffer = fs.readFileSync(pdfPath);
+    const storageFilename = `${meetingId}/${pdfFilename}`;
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage
+      .from('clubmeet_documents')
+      .upload(storageFilename, fileBuffer, {
+        contentType: 'application/pdf',
+        upsert: true
+      });
+
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: publicUrlData } = supabase
+      .storage
+      .from('clubmeet_documents')
+      .getPublicUrl(storageFilename);
+
+    // Save to DB
+    const document = await prisma.document.create({
+      data: {
+        meetingId,
+        type: 'REPORT',
+        publicId: storageFilename,
+        secureUrl: publicUrlData.publicUrl,
+      }
+    });
 
     // Update meeting status
     await prisma.meeting.update({
@@ -131,7 +163,7 @@ const generateReport = async (req, res) => {
       data: { status: 'REPORT_GENERATED' }
     });
 
-    res.json({ message: 'Report generated successfully', downloadUrl: `/uploads/${pdfFilename}` });
+    res.json({ message: 'Report generated successfully', document });
   } catch (error) {
     console.error('Error generating report:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -209,8 +241,57 @@ const exportODList = async (req, res) => {
   }
 };
 
+// Get all documents for a meeting
+const getDocuments = async (req, res) => {
+  try {
+    const { meetingId } = req.params;
+    const documents = await prisma.document.findMany({
+      where: { meetingId, isDeleted: false },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(documents);
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Delete a document
+const deleteDocument = async (req, res) => {
+  try {
+    const { meetingId, docId } = req.params;
+    
+    const document = await prisma.document.findUnique({ where: { id: docId } });
+    if (!document || document.meetingId !== meetingId) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Delete from Supabase
+    if (document.publicId) {
+      const { error } = await supabase.storage
+        .from('clubmeet_documents')
+        .remove([document.publicId]);
+      
+      if (error) console.error('Failed to delete from Supabase:', error);
+    }
+
+    // Soft delete in DB
+    await prisma.document.update({
+      where: { id: docId },
+      data: { isDeleted: true }
+    });
+
+    res.json({ message: 'Document deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   uploadDocument,
   generateReport,
-  exportODList
+  exportODList,
+  getDocuments,
+  deleteDocument
 };

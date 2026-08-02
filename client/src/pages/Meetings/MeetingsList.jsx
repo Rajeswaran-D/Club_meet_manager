@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Plus, Eye, Edit, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import Table from '../../components/ui/Table';
 import { LoadingSkeleton } from '../../components/ui/Skeletons';
@@ -10,6 +11,8 @@ import MeetingForm from './MeetingForm';
 
 const MeetingsList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingMeeting, setEditingMeeting] = useState(null);
+  const queryClient = useQueryClient();
 
   const { data: meetings, isLoading, isError } = useQuery({
     queryKey: ['meetings'],
@@ -18,6 +21,33 @@ const MeetingsList = () => {
       return data;
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id) => api.delete(`/meetings/${id}`),
+    onSuccess: () => {
+      toast.success('Meeting deleted successfully');
+      queryClient.invalidateQueries(['meetings']);
+    },
+    onError: () => {
+      toast.error('Failed to delete meeting');
+    }
+  });
+
+  const handleDelete = (id) => {
+    if (window.confirm('Are you sure you want to delete this meeting?')) {
+      deleteMutation.mutate(id);
+    }
+  };
+
+  const handleEdit = (meeting) => {
+    setEditingMeeting(meeting);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingMeeting(null);
+  };
 
   const columns = [
     { header: 'Title', accessor: 'title', render: (row) => <span className="font-semibold text-slate-800">{row.title}</span> },
@@ -32,8 +62,8 @@ const MeetingsList = () => {
         <Link to={`/meetings/${row.id}`} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
           <Eye size={18} />
         </Link>
-        <button className="p-1 text-slate-600 hover:bg-slate-50 rounded"><Edit size={18} /></button>
-        <button className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 size={18} /></button>
+        <button onClick={() => handleEdit(row)} className="p-1 text-slate-600 hover:bg-slate-50 rounded"><Edit size={18} /></button>
+        <button onClick={() => handleDelete(row.id)} disabled={deleteMutation.isPending} className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"><Trash2 size={18} /></button>
       </div>
     )}
   ];
@@ -46,7 +76,7 @@ const MeetingsList = () => {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-800">Meetings</h2>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => { setEditingMeeting(null); setIsModalOpen(true); }}
           className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
         >
           <Plus size={18} />
@@ -58,8 +88,8 @@ const MeetingsList = () => {
         <Table columns={columns} data={Array.isArray(meetings) ? meetings : (meetings?.data || [])} />
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create New Meeting">
-        <MeetingForm onSuccess={() => setIsModalOpen(false)} />
+      <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingMeeting ? "Edit Meeting" : "Create New Meeting"}>
+        <MeetingForm initialData={editingMeeting} isEditing={!!editingMeeting} onSuccess={handleCloseModal} />
       </Modal>
     </div>
   );

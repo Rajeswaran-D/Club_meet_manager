@@ -46,6 +46,7 @@ app.use('/api/meetings', require('./routes/meeting.routes'));
 app.use('/api/ai', require('./routes/ai.routes'));
 app.use('/api/attendance', require('./routes/attendance.routes'));
 app.use('/api/reports', require('./routes/report.routes'));
+app.use('/api/rsvp', require('./routes/rsvp.routes'));
 
 // Global Error Handler
 const errorHandler = require('./middlewares/errorHandler');

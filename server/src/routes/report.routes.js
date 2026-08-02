@@ -9,6 +9,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.use(requireAuth);
 
 router.post('/meetings/:meetingId/documents', upload.single('file'), reportController.uploadDocument);
+router.get('/meetings/:meetingId/documents', reportController.getDocuments);
+router.delete('/meetings/:meetingId/documents/:docId', reportController.deleteDocument);
 router.post('/meetings/:meetingId/generate-report', reportController.generateReport);
 router.get('/meetings/:meetingId/export-od-list', reportController.exportODList);
 

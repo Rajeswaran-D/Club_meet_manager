@@ -17,7 +17,7 @@ const generatePDF = async (htmlContent, outputPath) => {
     });
     
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
     
     await page.pdf({
       path: outputPath,

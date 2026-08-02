@@ -10,6 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.use(requireAuth); // All meeting routes require auth
 
 router.post('/', meetingController.createMeeting);
+router.get('/stats', meetingController.getStats);
 /**
  * @swagger
  * components:
@@ -50,8 +51,5 @@ router.get('/', meetingController.getMeetings);
 router.get('/:id', meetingController.getMeetingById);
 router.put('/:id', meetingController.updateMeeting);
 router.delete('/:id', meetingController.deleteMeeting);
-
-// Excel Upload
-router.post('/:meetingId/members/import', upload.single('file'), meetingController.importMembers);
 
 module.exports = router;

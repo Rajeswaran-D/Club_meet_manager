@@ -29,7 +29,7 @@ const sendInvitations = async (req, res) => {
 
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
-      include: { members: { include: { member: true } } }
+      include: { participants: { include: { member: true } } }
     });
 
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
@@ -38,16 +38,28 @@ const sendInvitations = async (req, res) => {
     const errors = [];
 
     // Send emails
-    for (const MeetingParticipant of meeting.members) {
+    for (const participant of meeting.participants) {
       try {
-        const to = MeetingParticipant.member.email;
-        // Basic template replacement
-        const personalizedBody = body.replace(/{{name}}/gi, MeetingParticipant.member.name);
+        const to = participant.member.email;
+        const appUrl = process.env.APP_URL || 'http://localhost:5173';
+        const rsvpLink = `${appUrl}/rsvp/${participant.rsvpToken}`;
         
-        await emailService.sendEmail(to, subject, personalizedBody, `<p>${personalizedBody.replace(/\\n/g, '<br/>')}</p>`);
+        let personalizedBody = body.replace(/{{name}}/gi, participant.member.name);
+        personalizedBody = personalizedBody.replace(/\[RSVP_LINK\]/gi, rsvpLink);
+        
+        const htmlBody = `<p>${personalizedBody.replace(/\n/g, '<br/>')}</p><br/><a href="${rsvpLink}" style="padding: 10px 20px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">View Invitation</a>`;
+
+        await emailService.sendEmail(to, subject, personalizedBody, htmlBody);
+        
+        // Mark as sent
+        await prisma.meetingParticipant.update({
+          where: { id: participant.id },
+          data: { emailSent: true }
+        });
+        
         sentCount++;
       } catch (err) {
-        errors.push({ email: MeetingParticipant.member.email, error: err.message });
+        errors.push({ email: participant.member.email, error: err.message });
       }
     }
 

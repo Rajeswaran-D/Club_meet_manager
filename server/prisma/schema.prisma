@@ -58,6 +58,7 @@ model MeetingParticipant {
   meetingId        String
   memberId         String
   rsvpStatus       RSVPStatus       @default(PENDING)
+  rsvpToken        String?          @unique
   attendanceStatus AttendanceStatus @default(PENDING)
   emailSent        Boolean          @default(false)
   reminderSent     Boolean          @default(false)

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
-import { Home, Calendar, Users, FileText, Settings, LogOut } from 'lucide-react';
+import { Home, Calendar, Settings, LogOut } from 'lucide-react';
+import ErrorBoundary from './ui/ErrorBoundary';
 
 const Layout = () => {
   const location = useLocation();
@@ -9,8 +10,6 @@ const Layout = () => {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: <Home size={20} /> },
     { name: 'Meetings', path: '/meetings', icon: <Calendar size={20} /> },
-    { name: 'Attendance', path: '/attendance', icon: <Users size={20} /> },
-    { name: 'Reports', path: '/reports', icon: <FileText size={20} /> },
     { name: 'Settings', path: '/settings', icon: <Settings size={20} /> },
   ];
 
@@ -25,7 +24,7 @@ const Layout = () => {
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
         <div className="p-6">
-          <h1 className="text-xl font-bold text-blue-600">AI Club Manager</h1>
+          <h1 className="text-xl font-bold text-blue-600">ClubMeet</h1>
         </div>
         <nav className="flex-1 px-4 space-y-2">
           {navItems.map((item) => {
@@ -69,7 +68,9 @@ const Layout = () => {
           </div>
         </header>
         <div className="flex-1 overflow-y-auto p-8">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>

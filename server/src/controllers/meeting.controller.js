@@ -1,30 +1,48 @@
 const prisma = require('../prisma');
 const xlsx = require('xlsx');
+const crypto = require('crypto');
 
 // Create a meeting
 const createMeeting = async (req, res) => {
   try {
-    const { title, description, date, time, venue, agenda } = req.body;
-    
-    if (!title || !date || !time || !venue) {
-      return res.status(400).json({ error: 'Title, date, time, and venue are required.' });
+    const { title, description, date, time, venue, agenda, members } = req.body;
+
+    const parsedDate = new Date(date);
+
+    // If members are provided, do it in a transaction
+    if (members && members.length > 0) {
+      const result = await prisma.$transaction(async (tx) => {
+        const meeting = await tx.meeting.create({
+          data: { title, description, date: parsedDate, time, venue, agenda }
+        });
+
+        for (const member of members) {
+          const dbMember = await tx.member.upsert({
+            where: { rollNo: member.rollNo },
+            update: { name: member.name, email: member.email, department: member.department, isDeleted: false },
+            create: { name: member.name, email: member.email, department: member.department, rollNo: member.rollNo }
+          });
+
+          await tx.meetingParticipant.create({
+            data: {
+              meetingId: meeting.id,
+              memberId: dbMember.id,
+              rsvpToken: crypto.randomUUID()
+            }
+          });
+        }
+        return meeting;
+      });
+      return res.status(201).json({ message: 'Meeting created successfully with members.', data: result });
+    } else {
+      const newMeeting = await prisma.meeting.create({
+        data: { title, description, date: parsedDate, time, venue, agenda }
+      });
+      return res.status(201).json({ message: 'Meeting created successfully', data: newMeeting });
     }
-
-    const meeting = await prisma.meeting.create({
-      data: {
-        title,
-        description,
-        date: new Date(date),
-        time,
-        venue,
-        agenda,
-      },
-    });
-
-    res.status(201).json(meeting);
   } catch (error) {
-    console.error('Error creating meeting:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Create meeting error:', error);
+    res.status(500).json({ error: 'Failed to create meeting' });
   }
 };
 
@@ -70,25 +88,50 @@ const getMeetingById = async (req, res) => {
 const updateMeeting = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, date, time, venue, agenda, status } = req.body;
+    const { title, description, date, time, venue, agenda, status, members } = req.body;
     
     const existing = await prisma.meeting.findUnique({ where: { id } });
     if (!existing || existing.isDeleted) return res.status(404).json({ error: 'Meeting not found' });
 
-    const meeting = await prisma.meeting.update({
-      where: { id },
-      data: {
-        ...(title && { title }),
-        ...(description && { description }),
-        ...(date && { date: new Date(date) }),
-        ...(time && { time }),
-        ...(venue && { venue }),
-        ...(agenda && { agenda }),
-        ...(status && { status }),
-      },
+    const meeting = await prisma.$transaction(async (tx) => {
+      const updated = await tx.meeting.update({
+        where: { id },
+        data: {
+          ...(title && { title }),
+          ...(description && { description }),
+          ...(date && { date: new Date(date) }),
+          ...(time && { time }),
+          ...(venue && { venue }),
+          ...(agenda && { agenda }),
+          ...(status && { status }),
+        },
+      });
+
+      if (members && members.length > 0) {
+        for (const member of members) {
+          const dbMember = await tx.member.upsert({
+            where: { rollNo: member.rollNo },
+            update: { name: member.name, email: member.email, department: member.department, isDeleted: false },
+            create: { name: member.name, email: member.email, department: member.department, rollNo: member.rollNo }
+          });
+          
+          await tx.meetingParticipant.upsert({
+            where: { meetingId_memberId: { meetingId: id, memberId: dbMember.id } },
+            update: {}, 
+            create: {
+              meetingId: id,
+              memberId: dbMember.id,
+              rsvpToken: crypto.randomUUID()
+            }
+          });
+        }
+      }
+      return updated;
     });
+
     res.json(meeting);
   } catch (error) {
+    console.error('Update meeting error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -162,6 +205,59 @@ const importMembers = async (req, res) => {
   }
 };
 
+// Get Global Stats
+const getStats = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const [
+      totalMembers,
+      upcomingMeetings,
+      completedMeetings,
+      todaysMeetings,
+      pendingRSVPs,
+      acceptedInvitations,
+      reportsCount
+    ] = await Promise.all([
+      prisma.member.count({ where: { isDeleted: false } }),
+      prisma.meeting.count({ where: { date: { gte: today }, isDeleted: false, status: { notIn: ['COMPLETED', 'REPORT_GENERATED', 'ARCHIVED'] } } }),
+      prisma.meeting.count({ where: { isDeleted: false, status: { in: ['COMPLETED', 'REPORT_GENERATED'] } } }),
+      prisma.meeting.count({ where: { date: { gte: today, lt: tomorrow }, isDeleted: false } }),
+      prisma.MeetingParticipant.count({ where: { rsvpStatus: 'PENDING' } }),
+      prisma.MeetingParticipant.count({ where: { rsvpStatus: 'CONFIRMED' } }),
+      prisma.document.count({ where: { type: 'REPORT', isDeleted: false } })
+    ]);
+
+    const participants = await prisma.MeetingParticipant.findMany({
+      where: { attendanceStatus: { in: ['PRESENT', 'ABSENT'] } },
+      select: { attendanceStatus: true }
+    });
+
+    let avgAttendance = 0;
+    if (participants.length > 0) {
+      const presentCount = participants.filter(p => p.attendanceStatus === 'PRESENT').length;
+      avgAttendance = Math.round((presentCount / participants.length) * 100);
+    }
+
+    res.json({
+      totalMembers,
+      avgAttendance,
+      upcomingMeetings,
+      completedMeetings,
+      todaysMeetings,
+      pendingRSVPs,
+      acceptedInvitations,
+      recentReports: reportsCount
+    });
+  } catch (error) {
+    console.error('Error fetching global stats:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   createMeeting,
   getMeetings,
@@ -169,4 +265,5 @@ module.exports = {
   updateMeeting,
   deleteMeeting,
   importMembers,
+  getStats,
 };

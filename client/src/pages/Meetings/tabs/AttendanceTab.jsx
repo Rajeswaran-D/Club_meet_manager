@@ -1,109 +1,180 @@
-import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import React from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
-import Table from '../../../components/ui/Table';
-import { Lock, Unlock } from 'lucide-react';
+import { LoadingSkeleton } from '../../../components/ui/Skeletons';
+import { UserCheck, UserX, CheckCircle, XCircle, Lock, Users, Download } from 'lucide-react';
 
-const AttendanceTab = ({ meeting }) => {
-  const [searchTerm, setSearchTerm] = useState('');
+const AttendanceTab = ({ meetingId }) => {
   const queryClient = useQueryClient();
 
-  const isLocked = meeting.status === 'ATTENDANCE_LOCKED' || meeting.status === 'COMPLETED' || meeting.status === 'REPORT_GENERATED';
-  const participants = meeting.members || [];
-  const confirmedParticipants = participants.filter(m => m.rsvpStatus === 'CONFIRMED');
-  
-  const filteredParticipants = confirmedParticipants.filter(m => 
-    m.member.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    m.member.rollNo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const { data: participants, isLoading } = useQuery({
+    queryKey: ['meetings', meetingId, 'participants'],
+    queryFn: async () => {
+      const { data } = await api.get(`/attendance/meetings/${meetingId}/attendance`);
+      return data;
+    }
+  });
+
+  const { data: meeting } = useQuery({
+    queryKey: ['meetings', meetingId],
+    queryFn: async () => {
+      const { data } = await api.get(`/meetings/${meetingId}`);
+      return data;
+    }
+  });
 
   const markMutation = useMutation({
-    mutationFn: async ({ participantIds, status }) => {
-      const { data } = await api.post(`/attendance/meetings/${meeting.id}/attendance`, { participantIds, status });
-      return data;
-    },
+    mutationFn: async ({ attendanceData }) => api.post(`/attendance/meetings/${meetingId}/attendance`, { attendanceData }),
     onSuccess: () => {
-      queryClient.invalidateQueries(['meeting', meeting.id]);
+      queryClient.invalidateQueries(['meetings', meetingId, 'participants']);
       toast.success('Attendance updated');
     },
     onError: () => toast.error('Failed to update attendance')
   });
 
-  const toggleIndividual = (participantId, currentStatus) => {
-    if (isLocked) return toast.error('Attendance is locked');
+  const toggleAttendance = (memberId, currentStatus) => {
+    if (meeting?.status === 'ATTENDANCE_LOCKED') {
+      toast.error('Attendance is locked for this meeting.');
+      return;
+    }
     const newStatus = currentStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
-    markMutation.mutate({ participantIds: [participantId], status: newStatus });
+    markMutation.mutate({ attendanceData: [{ memberId, status: newStatus }] });
   };
 
-  const markAll = (status) => {
-    if (isLocked) return;
-    const ids = filteredParticipants.map(p => p.id);
-    markMutation.mutate({ participantIds: ids, status });
-  };
+  if (isLoading) return <LoadingSkeleton rows={6} />;
 
-  const columns = [
-    { header: 'Name', accessor: 'name', render: (row) => row.member.name },
-    { header: 'Roll No', accessor: 'rollNo', render: (row) => row.member.rollNo },
-    { header: 'Status', accessor: 'attendanceStatus', render: (row) => {
-      const colors = {
-        PRESENT: 'bg-green-100 text-green-800',
-        ABSENT: 'bg-red-100 text-red-800',
-        PENDING: 'bg-slate-100 text-slate-800'
-      };
-      return <span className={`px-2 py-1 rounded-full text-xs font-bold ${colors[row.attendanceStatus]}`}>{row.attendanceStatus}</span>;
-    }},
-    { header: 'Action', accessor: 'id', render: (row) => (
-      <button 
-        onClick={() => toggleIndividual(row.id, row.attendanceStatus)}
-        disabled={isLocked || markMutation.isLoading}
-        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-          row.attendanceStatus === 'PRESENT' 
-            ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-            : 'bg-green-50 text-green-600 hover:bg-green-100'
-        } disabled:opacity-50`}
-      >
-        Mark {row.attendanceStatus === 'PRESENT' ? 'Absent' : 'Present'}
-      </button>
-    )}
-  ];
+  // Compute stats
+  const total = participants?.length || 0;
+  const present = participants?.filter(p => p.attendanceStatus === 'PRESENT').length || 0;
+  const absent = participants?.filter(p => p.attendanceStatus === 'ABSENT').length || 0;
+
+  const accepted = participants?.filter(p => p.rsvpStatus === 'CONFIRMED').length || 0;
+  const declined = participants?.filter(p => p.rsvpStatus === 'DECLINED').length || 0;
+
+  const StatCard = ({ title, value, icon, colorClass }) => (
+    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-slate-500">{title}</p>
+        <p className="text-2xl font-bold text-slate-800">{value}</p>
+      </div>
+      <div className={`p-3 rounded-full ${colorClass}`}>
+        {icon}
+      </div>
+    </div>
+  );
+
+  const downloadODList = async () => {
+    try {
+      const { data } = await api.get(`/attendance/meetings/${meetingId}/od-list`);
+      if (data.count === 0) {
+        toast.error('No students marked as present yet.');
+        return;
+      }
+      
+      const csvContent = 'data:text/csv;charset=utf-8,' 
+        + 'Name,Roll No,Department\n'
+        + data.data.map(m => `${m.name},${m.rollNo},${m.department}`).join('\n');
+        
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `OD_List_${meeting?.title || 'Meeting'}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('OD List downloaded successfully');
+    } catch (error) {
+      toast.error('Failed to download OD List');
+    }
+  };
 
   return (
-    <div className="p-6 bg-white rounded-b-xl border border-t-0 border-slate-200 space-y-6">
-      
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center pb-4 border-b border-slate-100">
         <div>
-          <h3 className="font-semibold text-slate-800 flex items-center">
-            {isLocked ? <Lock size={18} className="mr-2 text-red-500" /> : <Unlock size={18} className="mr-2 text-green-500" />}
-            {isLocked ? 'Attendance Locked' : 'Attendance Open'}
-          </h3>
-          <p className="text-sm text-slate-500">Only CONFIRMED members appear in this list.</p>
+          <h3 className="text-lg font-semibold text-slate-800">Attendance Management</h3>
+          <p className="text-sm text-slate-500">Record physical or virtual presence for the meeting.</p>
         </div>
-        <div className="flex space-x-3">
-          <button onClick={() => markAll('PRESENT')} disabled={isLocked} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-            Mark All Present
+        <div className="flex items-center space-x-3">
+          <button 
+            onClick={downloadODList}
+            className="flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium rounded-lg transition-colors border border-indigo-200 text-sm"
+          >
+            <Download size={16} className="mr-2" />
+            Download OD List
           </button>
-          <button onClick={() => markAll('ABSENT')} disabled={isLocked} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
-            Mark All Absent
-          </button>
+          
+          {meeting?.status === 'ATTENDANCE_LOCKED' && (
+            <div className="flex items-center text-amber-600 bg-amber-50 px-3 py-1 rounded-full text-sm font-medium border border-amber-200 h-9">
+              <Lock size={16} className="mr-1" /> Locked
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="flex justify-between items-center">
-        <input 
-          type="text" 
-          placeholder="Search confirmed participants..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-64"
-        />
-        <div className="text-sm font-medium text-slate-600">
-          Total Confirmed: {confirmedParticipants.length}
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <StatCard title="Total" value={total} icon={<Users size={20} className="text-blue-600" />} colorClass="bg-blue-50" />
+        <StatCard title="RSVP Yes" value={accepted} icon={<CheckCircle size={20} className="text-indigo-600" />} colorClass="bg-indigo-50" />
+        <StatCard title="RSVP No" value={declined} icon={<XCircle size={20} className="text-rose-600" />} colorClass="bg-rose-50" />
+        <StatCard title="Present" value={present} icon={<UserCheck size={20} className="text-emerald-600" />} colorClass="bg-emerald-50" />
+        <StatCard title="Absent" value={absent} icon={<UserX size={20} className="text-red-600" />} colorClass="bg-red-50" />
       </div>
 
-      <div className="border border-slate-200 rounded-xl overflow-hidden">
-        <Table columns={columns} data={filteredParticipants} emptyMessage="No confirmed participants found." />
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+            <tr>
+              <th className="px-6 py-4 font-medium">Participant</th>
+              <th className="px-6 py-4 font-medium">Department</th>
+              <th className="px-6 py-4 font-medium text-center">RSVP</th>
+              <th className="px-6 py-4 font-medium text-right">Attendance Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {participants?.map((p) => (
+              <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-6 py-4">
+                  <p className="font-medium text-slate-800">{p.member.name}</p>
+                  <p className="text-xs text-slate-500">{p.member.rollNo}</p>
+                </td>
+                <td className="px-6 py-4 text-slate-600">{p.member.department}</td>
+                <td className="px-6 py-4">
+                  <div className="flex justify-center">
+                    {p.rsvpStatus === 'CONFIRMED' ? <span className="text-green-600 text-xs font-bold bg-green-50 px-2 py-1 rounded border border-green-100">YES</span> :
+                     p.rsvpStatus === 'DECLINED' ? <span className="text-red-600 text-xs font-bold bg-red-50 px-2 py-1 rounded border border-red-100">NO</span> :
+                     <span className="text-slate-400 text-xs font-bold bg-slate-50 px-2 py-1 rounded border border-slate-100">PENDING</span>}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <button
+                    onClick={() => toggleAttendance(p.memberId, p.attendanceStatus)}
+                    disabled={meeting?.status === 'ATTENDANCE_LOCKED'}
+                    className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                      p.attendanceStatus === 'PRESENT'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                        : p.attendanceStatus === 'ABSENT'
+                        ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {p.attendanceStatus === 'PRESENT' ? <><UserCheck size={16} className="mr-2"/> Marked Present</> :
+                     p.attendanceStatus === 'ABSENT' ? <><UserX size={16} className="mr-2"/> Marked Absent</> :
+                     'Mark Status'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {participants?.length === 0 && (
+              <tr>
+                <td colSpan="4" className="px-6 py-8 text-center text-slate-500">
+                  No participants found. Import members to manage attendance.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

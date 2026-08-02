@@ -1,150 +1,115 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
-import { FileText, Image as ImageIcon, UploadCloud, Trash2, Download } from 'lucide-react';
+import { Upload, FileText, Image as ImageIcon, Trash2, Download } from 'lucide-react';
+import { LoadingSkeleton } from '../../../components/ui/Skeletons';
 
-const FileSection = ({ meetingId, type, title, allowedTypes, documents = [], queryClient }) => {
-  const [isDragging, setIsDragging] = useState(false);
+const DocumentsTab = ({ meetingId }) => {
+  const [isUploading, setIsUploading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: documents, isLoading } = useQuery({
+    queryKey: ['meetings', meetingId, 'documents'],
+    queryFn: async () => {
+      const { data } = await api.get(`/reports/meetings/${meetingId}/documents`);
+      return data;
+    },
+  });
 
   const uploadMutation = useMutation({
-    mutationFn: async (file) => {
+    mutationFn: async ({ file, type }) => {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('type', type);
-      const { data } = await api.post(`/reports/meetings/${meetingId}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      await api.post(`/reports/meetings/${meetingId}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-      return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['meeting', meetingId]);
-      toast.success(`${title} uploaded successfully`);
+      queryClient.invalidateQueries(['meetings', meetingId, 'documents']);
+      toast.success('File uploaded successfully');
     },
-    onError: () => toast.error(`Failed to upload ${title}`)
+    onError: () => toast.error('Failed to upload file'),
+    onSettled: () => setIsUploading(false),
   });
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    validateAndUpload(file);
-  };
+  const deleteMutation = useMutation({
+    mutationFn: async (docId) => api.delete(`/reports/meetings/${meetingId}/documents/${docId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['meetings', meetingId, 'documents']);
+      toast.success('Document deleted');
+    }
+  });
 
-  const handleChange = (e) => {
+  const handleFileUpload = (type) => (e) => {
     const file = e.target.files[0];
-    validateAndUpload(file);
+    if (file) {
+      setIsUploading(true);
+      uploadMutation.mutate({ file, type });
+    }
   };
 
-  const validateAndUpload = (file) => {
-    if (!file) return;
-    const extension = file.name.split('.').pop().toLowerCase();
-    const isValidType = allowedTypes.includes(extension) || allowedTypes.includes(file.type);
-    if (!isValidType) {
-      return toast.error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`);
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      return toast.error('File size must be less than 5MB');
-    }
-    uploadMutation.mutate(file);
+  if (isLoading) return <LoadingSkeleton rows={5} />;
+
+  const getIcon = (type) => {
+    if (type === 'PHOTO') return <ImageIcon className="text-blue-500" size={24} />;
+    return <FileText className="text-slate-500" size={24} />;
   };
 
-  return (
-    <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h4 className="font-semibold text-slate-800 flex items-center">
-          {type === 'PHOTO' ? <ImageIcon className="mr-2 text-indigo-500" size={18} /> : <FileText className="mr-2 text-blue-500" size={18} />}
-          {title}
-        </h4>
-        <span className="text-xs font-medium text-slate-500 uppercase">{allowedTypes.join(' | ')}</span>
+  const renderUploadBox = (type, title, description, accept) => (
+    <div className="border border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center bg-white shadow-sm hover:shadow-md transition-shadow">
+      <div className="bg-blue-50 p-3 rounded-full mb-3">
+        <Upload className="text-blue-600" size={24} />
       </div>
-
-      <div 
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-          isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-slate-400 bg-white'
-        }`}
-      >
-        <UploadCloud className="mx-auto text-slate-400 mb-2" size={24} />
-        <p className="text-sm text-slate-600 mb-1">Drag and drop or click to upload</p>
-        <p className="text-xs text-slate-400 mb-3">Max file size 5MB</p>
-        <label className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-50 cursor-pointer">
-          Select File
-          <input type="file" className="hidden" accept={allowedTypes.map(ext => `.${ext}`).join(',')} onChange={handleChange} disabled={uploadMutation.isLoading} />
-        </label>
-      </div>
-
-      {documents.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {documents.map((doc) => (
-            <div key={doc.id} className="flex justify-between items-center bg-white p-3 rounded border border-slate-200 shadow-sm">
-              <div className="flex items-center space-x-3 overflow-hidden">
-                {type === 'PHOTO' && doc.secureUrl ? (
-                  <img src={doc.secureUrl} alt="Thumbnail" className="w-10 h-10 object-cover rounded" />
-                ) : (
-                  <FileText className="text-slate-400" size={20} />
-                )}
-                <div className="truncate">
-                  <p className="text-sm font-medium text-slate-700 truncate">Document ID: {doc.id.substring(0,8)}</p>
-                  <p className="text-xs text-slate-400">{new Date(doc.createdAt).toLocaleString()}</p>
-                </div>
-              </div>
-              <div className="flex space-x-2">
-                <a href={doc.secureUrl} target="_blank" rel="noreferrer" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                  <Download size={16} />
-                </a>
-                <button className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <h4 className="font-semibold text-slate-800">{title}</h4>
+      <p className="text-sm text-slate-500 mb-4">{description}</p>
+      <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 px-4 rounded-lg transition-colors">
+        {isUploading ? 'Uploading...' : 'Choose File'}
+        <input type="file" className="hidden" accept={accept} onChange={handleFileUpload(type)} disabled={isUploading} />
+      </label>
     </div>
   );
-};
-
-const DocumentsTab = ({ meeting }) => {
-  const queryClient = useQueryClient();
-  const docs = meeting.documents || [];
 
   return (
-    <div className="p-6 bg-white rounded-b-xl border border-t-0 border-slate-200 space-y-6">
-      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
-        <h3 className="font-semibold text-blue-900">Meeting Documents</h3>
-        <p className="text-sm text-blue-700 mt-1">Upload the Minutes of Meeting (MoM), IPC documents, and event photos required for report generation.</p>
+    <div className="space-y-8">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">Upload Documents</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {renderUploadBox('MINUTES', 'Meeting Minutes', 'Upload official typed minutes (.pdf, .docx)', '.pdf,.doc,.docx')}
+          {renderUploadBox('IPC', 'Supporting Documents (Optional)', 'Upload slide decks, Excel sheets, etc.', '*/*')}
+          {renderUploadBox('PHOTO', 'Photos (Optional)', 'Upload event photos (.jpg, .png)', 'image/*')}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <FileSection 
-          meetingId={meeting.id} 
-          type="MINUTES" 
-          title="Minutes of Meeting" 
-          allowedTypes={['pdf', 'docx', 'txt']} 
-          documents={docs.filter(d => d.type === 'MINUTES')} 
-          queryClient={queryClient}
-        />
-        <FileSection 
-          meetingId={meeting.id} 
-          type="IPC" 
-          title="IPC Document" 
-          allowedTypes={['pdf', 'docx']} 
-          documents={docs.filter(d => d.type === 'IPC')} 
-          queryClient={queryClient}
-        />
+      <div>
+        <h3 className="text-lg font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Uploaded Files</h3>
+        {documents?.length === 0 ? (
+          <p className="text-slate-500 italic bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">No documents uploaded yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {documents?.map((doc) => (
+              <div key={doc.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-300 transition-colors">
+                <div className="flex items-center space-x-3 overflow-hidden">
+                  {getIcon(doc.type)}
+                  <div>
+                    <p className="font-medium text-slate-800 truncate">{doc.type}</p>
+                    <p className="text-xs text-slate-500">{new Date(doc.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <a href={doc.secureUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-400 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-lg transition-colors">
+                    <Download size={18} />
+                  </a>
+                  <button onClick={() => deleteMutation.mutate(doc.id)} className="p-2 text-slate-400 hover:text-red-600 bg-slate-50 hover:bg-red-50 rounded-lg transition-colors">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      <FileSection 
-        meetingId={meeting.id} 
-        type="PHOTO" 
-        title="Photo Gallery" 
-        allowedTypes={['jpg', 'jpeg', 'png', 'image/jpeg', 'image/png']} 
-        documents={docs.filter(d => d.type === 'PHOTO')} 
-        queryClient={queryClient}
-      />
     </div>
   );
 };
